@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS mp3Files (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    fileName VARCHAR(255) NOT NULL,
+    fileData BLOB NOT NULL,
+    fileSize INT NOT NULL
+);
