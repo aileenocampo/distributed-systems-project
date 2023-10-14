@@ -74,6 +74,7 @@ int main()
         memset(buffer, 0, sizeof(buffer));
 
         int bytes = SSL_read(ssl, buffer, sizeof(buffer));
+        printf("Received data: %s\n", buffer);
         if (bytes > 0)
         {
             printf("Available MP3 files:\n%s", buffer);

@@ -12,6 +12,7 @@
 
 #define PORT 8080
 #define BUFFER_SIZE 1024
+#define DB_SERVER_PORT 8081
 
 SSL_CTX *init_server_ctx()
 {
@@ -32,29 +33,31 @@ SSL_CTX *init_server_ctx()
     return ctx;
 }
 
-void list_files(int client_socket, SSL *ssl)
-{
-    DIR *d;
-    struct dirent *dir;
+void list_files(int client_socket, SSL *ssl) {
+    int db_socket;
+    struct sockaddr_in dbserver_address;
     char buffer[BUFFER_SIZE];
 
-    // d = opendir(".");
-    d = opendir("media");
-    if (d)
-    {
-        while ((dir = readdir(d)) != NULL)
-        {
-            if (strstr(dir->d_name, ".mp3"))
-            {
-                // snprintf(buffer, sizeof(buffer), "%s\n", dir->d_name);
-                // SSL_write(ssl, buffer, strlen(buffer));
-                strncat(buffer, dir->d_name, sizeof(buffer) - strlen(buffer) - 1);
-                strncat(buffer, "\n", sizeof(buffer) - strlen(buffer) - 1);
-            }
-        }
+    db_socket = socket(AF_INET, SOCK_STREAM, 0);
+    memset(&dbserver_address, 0, sizeof(dbserver_address));
+    dbserver_address.sin_family = AF_INET;
+    dbserver_address.sin_port = htons(DB_SERVER_PORT);
+    dbserver_address.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    if (connect(db_socket, (struct sockaddr *)&dbserver_address, sizeof(dbserver_address)) != 0) {
+        perror("Could not connect to dbserver");
+        strcpy(buffer, "Error fetching MP3 list");
         SSL_write(ssl, buffer, strlen(buffer));
-        closedir(d);
+        return;
     }
+
+    char request[] = "GET MP3 LIST";
+    send(db_socket, request, strlen(request), 0);
+    memset(buffer, 0, sizeof(buffer));
+    recv(db_socket, buffer, sizeof(buffer) - 1, 0);
+    close(db_socket);
+
+    SSL_write(ssl, buffer, strlen(buffer));
 }
 
 void *handle_client(void *arg)

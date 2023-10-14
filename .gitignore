@@ -1,0 +1,6 @@
+.vscode
+client
+server
+dbserver
+*.mp3
+*.pem
