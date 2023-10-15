@@ -9,6 +9,7 @@
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <arpa/inet.h>
 
 #define PORT 8080
 #define BUFFER_SIZE 1024
@@ -33,7 +34,8 @@ SSL_CTX *init_server_ctx()
     return ctx;
 }
 
-void list_files(int client_socket, SSL *ssl) {
+void list_files(int client_socket, SSL *ssl)
+{
     int db_socket;
     struct sockaddr_in dbserver_address;
     char buffer[BUFFER_SIZE];
@@ -44,7 +46,8 @@ void list_files(int client_socket, SSL *ssl) {
     dbserver_address.sin_port = htons(DB_SERVER_PORT);
     dbserver_address.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-    if (connect(db_socket, (struct sockaddr *)&dbserver_address, sizeof(dbserver_address)) != 0) {
+    if (connect(db_socket, (struct sockaddr *)&dbserver_address, sizeof(dbserver_address)) != 0)
+    {
         perror("Could not connect to dbserver");
         strcpy(buffer, "Error fetching MP3 list");
         SSL_write(ssl, buffer, strlen(buffer));
