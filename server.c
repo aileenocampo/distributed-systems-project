@@ -9,7 +9,6 @@
 #include <openssl/err.h>
 #include <arpa/inet.h>
 
-#define PORT 8080
 #define BUFFER_SIZE 1024
 #define DB_SERVER_PORT 3307
 
@@ -91,8 +90,16 @@ void *handle_client(void *arg)
     return NULL;
 }
 
-int main()
+int main(int argc, char *argv[])
 {
+    if (argc != 2)
+    {
+        printf("Usage: %s <port>\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
+    int port = atoi(argv[1]);
+
     int server_socket;
     struct sockaddr_in server_address;
     socklen_t addr_len = sizeof(server_address);
@@ -103,12 +110,12 @@ int main()
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     memset(&server_address, 0, sizeof(server_address));
     server_address.sin_family = AF_INET;
-    server_address.sin_port = htons(PORT);
-    server_address.sin_addr.s_addr = htonl(INADDR_ANY);
+    server_address.sin_port = htons(port);
+    server_address.sin_addr.s_addr = inet_addr("127.0.0.1"); // Set to the loopback address
 
     bind(server_socket, (struct sockaddr *)&server_address, sizeof(server_address));
     listen(server_socket, 5);
-    printf("Server started and listening on port %d\n", PORT);
+    printf("Server started and listening on 127.0.0.1:%d\n", port);
 
     while (1)
     {
