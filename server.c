@@ -5,13 +5,13 @@
 #include <pthread.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <dirent.h>
-#include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <arpa/inet.h>
 
 #define PORT 8080
 #define BUFFER_SIZE 1024
+#define DB_SERVER_PORT 3307
 
 SSL_CTX *init_server_ctx()
 {
@@ -32,37 +32,48 @@ SSL_CTX *init_server_ctx()
     return ctx;
 }
 
-void list_files(int client_socket, SSL *ssl)
+void handle_db_request(int client_socket, SSL *ssl)
 {
-    DIR *d;
-    struct dirent *dir;
+    int db_socket;
+    struct sockaddr_in dbserver_address;
     char buffer[BUFFER_SIZE];
 
-    // d = opendir(".");
-    d = opendir("media");
-    if (d)
+    db_socket = socket(AF_INET, SOCK_STREAM, 0);
+    memset(&dbserver_address, 0, sizeof(dbserver_address));
+    dbserver_address.sin_family = AF_INET;
+    dbserver_address.sin_port = htons(DB_SERVER_PORT);
+    dbserver_address.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    if (connect(db_socket, (struct sockaddr *)&dbserver_address, sizeof(dbserver_address)) != 0)
     {
-        while ((dir = readdir(d)) != NULL)
-        {
-            if (strstr(dir->d_name, ".mp3"))
-            {
-                // snprintf(buffer, sizeof(buffer), "%s\n", dir->d_name);
-                // SSL_write(ssl, buffer, strlen(buffer));
-                strncat(buffer, dir->d_name, sizeof(buffer) - strlen(buffer) - 1);
-                strncat(buffer, "\n", sizeof(buffer) - strlen(buffer) - 1);
-            }
-        }
-        SSL_write(ssl, buffer, strlen(buffer));
-        closedir(d);
+        perror("Could not connect to dbserver");
+        exit(EXIT_FAILURE);
     }
+
+    char request[] = "LIST";
+    send(db_socket, request, strlen(request), 0);
+    memset(buffer, 0, sizeof(buffer));
+    recv(db_socket, buffer, sizeof(buffer) - 1, 0);
+
+    SSL_write(ssl, buffer, strlen(buffer));
+    memset(buffer, 0, sizeof(buffer));
+    SSL_read(ssl, buffer, sizeof(buffer) - 1);
+
+    char link_request[BUFFER_SIZE];
+    snprintf(link_request, sizeof(link_request), "GET MP3 LINK %s", buffer);
+
+    send(db_socket, link_request, strlen(link_request), 0);
+    memset(buffer, 0, sizeof(buffer));
+    recv(db_socket, buffer, sizeof(buffer) - 1, 0);
+
+    SSL_write(ssl, buffer, strlen(buffer));
+    close(db_socket);
 }
 
 void *handle_client(void *arg)
 {
     int client_socket = *(int *)arg;
-    SSL *ssl;
-
-    ssl = SSL_new(init_server_ctx());
+    SSL *ssl = SSL_new(init_server_ctx());
     SSL_set_fd(ssl, client_socket);
 
     if (SSL_accept(ssl) <= 0)
@@ -71,46 +82,18 @@ void *handle_client(void *arg)
     }
     else
     {
-        char buffer[BUFFER_SIZE];
-        memset(buffer, 0, sizeof(buffer));
-
-        list_files(client_socket, ssl);
-
-        // ... further code to send the selected file ...
-        memset(buffer, 0, sizeof(buffer));
-        SSL_read(ssl, buffer, sizeof(buffer) - 1);
-
-        char filepath[BUFFER_SIZE];
-        snprintf(filepath, sizeof(filepath), "media/%.*s", (int)(BUFFER_SIZE - 7 - 1), buffer);
-        FILE *file = fopen(buffer, "rb");
-        // FILE *file = fopen(strcat("media/", buffer), "rb");
-        if (file)
-        {
-            char send_buffer[BUFFER_SIZE];
-            int bytes_read;
-
-            while ((bytes_read = fread(send_buffer, 1, sizeof(send_buffer), file)) > 0)
-            {
-                SSL_write(ssl, send_buffer, bytes_read);
-            }
-
-            fclose(file);
-        }
-        else
-        {
-            char msg[] = "Error opening file";
-            SSL_write(ssl, msg, strlen(msg));
-        }
+        handle_db_request(client_socket, ssl);
     }
 
     SSL_free(ssl);
     close(client_socket);
+    free(arg);
     return NULL;
 }
 
 int main()
 {
-    int server_socket, client_socket;
+    int server_socket;
     struct sockaddr_in server_address;
     socklen_t addr_len = sizeof(server_address);
 
@@ -125,16 +108,17 @@ int main()
 
     bind(server_socket, (struct sockaddr *)&server_address, sizeof(server_address));
     listen(server_socket, 5);
-
-    // Notification that the server is listening
     printf("Server started and listening on port %d\n", PORT);
 
     while (1)
     {
-        client_socket = accept(server_socket, (struct sockaddr *)&server_address, &addr_len);
+        int client_socket = accept(server_socket, (struct sockaddr *)&server_address, &addr_len);
+        int *new_sock = malloc(sizeof(int));
+        *new_sock = client_socket;
 
         pthread_t client_thread;
-        pthread_create(&client_thread, NULL, handle_client, &client_socket);
+        pthread_create(&client_thread, NULL, handle_client, new_sock);
+        pthread_detach(client_thread);
     }
 
     close(server_socket);

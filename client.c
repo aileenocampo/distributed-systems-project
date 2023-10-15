@@ -7,6 +7,7 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 
 #define PORT 8080
 #define BUFFER_SIZE 1024
@@ -29,8 +30,6 @@ SSL_CTX *init_client_ctx()
     return ctx;
 }
 
-// ... [rest of the includes and init_client_ctx function remain unchanged]
-
 int main()
 {
     int client_socket;
@@ -46,7 +45,6 @@ int main()
     server_address.sin_port = htons(PORT);
     server_address.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-    // Notify the user about the port the client is trying to connect to
     printf("Attempting to connect to server on port %d...\n", PORT);
 
     if (connect(client_socket, (struct sockaddr *)&server_address, sizeof(server_address)) != 0)
@@ -73,32 +71,49 @@ int main()
         char buffer[BUFFER_SIZE];
         memset(buffer, 0, sizeof(buffer));
 
-        int bytes = SSL_read(ssl, buffer, sizeof(buffer));
+        int bytes = SSL_read(ssl, buffer, sizeof(buffer) - 1);
+        buffer[bytes] = '\0';
         if (bytes > 0)
         {
             printf("Available MP3 files:\n%s", buffer);
+
+            char *token = strtok(buffer, "\n");
+            int index = 0;
+            while (token != NULL)
+            {
+                printf("%d: %s\n", ++index, token);
+                token = strtok(NULL, "\n");
+            }
         }
 
-        char choice[BUFFER_SIZE];
-        printf("Enter the name of the MP3 file you want to download: ");
-        fgets(choice, sizeof(choice), stdin);
-        choice[strcspn(choice, "\n")] = 0;
+        int choice;
+        printf("Enter the number of the MP3 file you want to download: ");
+        scanf("%d", &choice);
+        getchar();
 
-        SSL_write(ssl, choice, strlen(choice));
+        snprintf(buffer, sizeof(buffer), "%d", choice);
+        SSL_write(ssl, buffer, strlen(buffer));
 
-        FILE *file = fopen(choice, "wb");
-        if (file)
+        memset(buffer, 0, sizeof(buffer));
+        bytes = SSL_read(ssl, buffer, sizeof(buffer) - 1);
+        buffer[bytes] = '\0';
+        if (bytes > 0)
         {
-            while ((bytes = SSL_read(ssl, buffer, sizeof(buffer))) > 0)
-            {
-                fwrite(buffer, 1, bytes, file);
-            }
-            fclose(file);
-            printf("File '%s' downloaded successfully!\n", choice);
+            char currentDir[512];
+            getcwd(currentDir, sizeof(currentDir));
+
+            char command[512];
+            char filename[512];
+
+            snprintf(filename, sizeof(filename), "%s/song.mp3", currentDir);
+
+            snprintf(command, sizeof(command), "curl -o %s -L %s", filename, buffer);
+            system(command);
+            printf("Downloaded song to: %s\n", filename);
         }
         else
         {
-            printf("Error saving the file locally.\n");
+            printf("No data received from server.\n");
         }
     }
 

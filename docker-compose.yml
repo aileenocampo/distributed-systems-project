@@ -1,0 +1,17 @@
+services:
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile.mysql
+      
+    volumes:
+      - db_data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: musicDB
+      MYSQL_USER: username
+      MYSQL_PASSWORD: password
+    ports:
+      - "3306:3306"
+volumes:
+  db_data:
